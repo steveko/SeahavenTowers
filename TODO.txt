@@ -1,0 +1,4 @@
+- Autosave/restore game state
+- New game button (with confirmation!)
+- Show next possible moves
+
