@@ -91,7 +91,7 @@ class TableNode (SpriteNode):
 	def __init__(self):
 		# Create a card node so we can get the width and height of a single
 		# card. The size of the table will be based on that.
-		card = CardNode(Card(Card.ace, Card.spades))
+		card = CardNode(Card(Rank.ace, Suit.spades))
 		self.card_size = card.size
 		(self.card_width, self.card_height) = card.size
 		
@@ -131,7 +131,7 @@ class TableNode (SpriteNode):
 	
 	def setup_placards(self):
 		# Add suit placards
-		suits_columns = [(Card.diamonds, 0), (Card.clubs, 1), (Card.hearts, 8), (Card.spades, 9)]
+		suits_columns = [(Suit.diamonds, 0), (Suit.clubs, 1), (Suit.hearts, 8), (Suit.spades, 9)]
 		for (suit, column) in suits_columns:				
 			placard = PlacardNode(self.card_size, suit)
 			placard.position = self.card_position_at(column, 0)
@@ -223,8 +223,8 @@ class TableNode (SpriteNode):
 		for _, card_node in self.card_nodes.items():
 			card_node.remove_from_parent()
 		
-		self.card_nodes = {}
 		self.game = game
+		self.card_nodes = {}
 		self.animation_queue = []
 		
 		for i in range(10):
@@ -249,7 +249,7 @@ class TableNode (SpriteNode):
 				
 		suit_columns = [1, 0, 8, 9]
 				
-		for suit in Card.all_suits:
+		for suit in Suit.all_suits:
 			suit_slot = self.game.slot_for_suit(suit)
 			column = suit_columns[suit]
 			for card in suit_slot:
@@ -288,8 +288,8 @@ class TableNode (SpriteNode):
 	
 	def clear_selection(self):
 		card = self.selected_card
-		up_card = Card(card.rank+1, card.suit) if card.rank < Card.king else None
-		down_card = Card(card.rank-1, card.suit) if card.rank > Card.ace else None
+		up_card = Card(card.rank+1, card.suit) if card.rank < Rank.king else None
+		down_card = Card(card.rank-1, card.suit) if card.rank > Rank.ace else None
 
 		self.card_nodes[card].color = 'white'
 		if up_card:
@@ -299,8 +299,8 @@ class TableNode (SpriteNode):
 		
 	def select_card(self, slot_index, num_cards):
 		card = self.game.slots[slot_index][-num_cards]
-		up_card = Card(card.rank+1, card.suit) if card.rank < Card.king else None
-		down_card = Card(card.rank-1, card.suit) if card.rank > Card.ace else None
+		up_card = Card(card.rank+1, card.suit) if card.rank < Rank.king else None
+		down_card = Card(card.rank-1, card.suit) if card.rank > Rank.ace else None
 		
 		selected_same_card = False
 			
@@ -329,7 +329,6 @@ class TableNode (SpriteNode):
 		# don't process a new touch while a touch is in progress
 		if self.current_touch:
 			return
-			
 		self.current_touch = touch
 		
 		# convert to coordinate space of TableNode
@@ -342,12 +341,20 @@ class TableNode (SpriteNode):
 				self.pressed_button = button
 				return
 				
+		# check for card touch
+		found_tuple = self.find_slot_containing_point(loc)
+		if found_tuple:
+			(slot_index, num_cards) = found_tuple
+			if num_cards > 0:
+				self.select_card(slot_index, num_cards)		
+				
 	def touch_moved(self, touch):
 		if self.current_touch and self.current_touch.touch_id != touch.touch_id:
 			return
 			
 		loc = self.point_from_scene(touch.location)
 		
+		# handle pressed button tracking
 		if self.pressed_button:
 			if not loc in self.pressed_button.frame:
 				self.pressed_button.set_pressed(False)
@@ -399,13 +406,6 @@ class TableNode (SpriteNode):
 
 		loc = self.point_from_scene(touch.location)
 		
-		if self.pressed_button == None and self.drag_state == TableNode.CHECK_FOR_DRAG:
-			found_tuple = self.find_slot_containing_point(loc)
-			if found_tuple:
-				(slot_index, num_cards) = found_tuple
-				if num_cards > 0:
-					self.select_card(slot_index, num_cards)
-						
 		self.current_touch = None
 		self.drag_state = TableNode.CHECK_FOR_DRAG
 		
@@ -415,6 +415,10 @@ class TableNode (SpriteNode):
 			self.pressed_button.set_pressed(False)
 			self.pressed_button = None
 			return
+		
+		if self.selected_card:
+			self.clear_selection()
+			self.selected_card = None
 
 		# determine if the destination represents a valid move
 		if self.drag_cards:
@@ -423,11 +427,7 @@ class TableNode (SpriteNode):
 			if dest_tuple:
 				(source_slot_index, num_cards) = self.move_source
 				(dest_slot_index, _) = dest_tuple
-				
-				if source_slot_index == dest_slot_index:
-					self.select_card(source_slot_index, num_cards)
-				else:
-					is_valid_move = self.game.move(source_slot_index, dest_slot_index, num_cards)
+				is_valid_move = self.game.move(source_slot_index, dest_slot_index, num_cards)
 			
 			delta_position = self.drag_cards.position
 			for card_node in self.drag_cards.children:
@@ -484,7 +484,15 @@ class TableNode (SpriteNode):
 		self.buttons[0].set_enabled(self.game.has_undo())
 		self.buttons[1].set_enabled(self.game.has_redo())		
 		
+		
 class SeahavenScene (Scene):
+	'''
+	Main scene for the Seahaven game. Just contains a single node: table. The
+	table node does all the heavy lifting. The SeahavenScene just concerns itself
+	with adjusting the table node scale and position in response to screen
+	size changes. It also passes touch events through to the table node.
+	'''
+	
 	def setup(self):
 		self.table = TableNode()
 		self.table.set_game(Seahaven())

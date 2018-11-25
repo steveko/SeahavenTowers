@@ -13,48 +13,69 @@ NUM_CARDS_PER_TOWER = 5
 
 
 def is_descending_sequence_common_suit(cards):
-	last_card = None
-	for c in cards:
-		if last_card:
-			if c.suit != last_card.suit or c.rank != last_card.rank-1:
+	'''
+	cards must be a list of Card objects.
+	Returns True is cards is empty.
+	Returns True if every card in cards is of the same suit, and each card
+	(other than the first) is exactly one less in rank than the card before it.
+	Otherwise, returns False.
+	'''
+	previous_card = None
+	for card in cards:
+		if previous_card:
+			if card.suit != previous_card.suit or card.rank != previous_card.rank-1:
 				return False
-		last_card = c
+		previous_card = card
 	return True
 
 
-class Card (object):
+class Suit (object):
 	'''
-	suit is an integer from 0 to 3 (clubs=0, diamonds, hearts, spades=3)
-	rank is an integer from 1 to 13 (ace=1, jack=11, queen=12, king=13)
+	Just a class from which to hang the suit constants. We don't instantiate
+	any instances of this class.
 	'''
-	
-	# some constants for making card creation easier to read
-	
-	# suits
 	clubs = 0
 	diamonds = 1
 	hearts = 2
 	spades = 3
 	
+	all_suits = [clubs, diamonds, hearts, spades]
+	
+	# for printf debugging purposes mostly
+	map = "♧♢♡♤"
+
+
+class Rank (object):
+	'''
+	Just a class from which to hang the rank constants. We don't instantiate
+	any instances of this class.
+	'''
 	# ranks that aren't just numbers
 	ace = 1
 	jack = 11
 	queen = 12
 	king = 13
 	
-	all_suits = [clubs, diamonds, hearts, spades]
+	# some handy constant lists to have around
 	all_ranks = [ace, 2, 3, 4, 5, 6, 7, 8, 9, 10, jack, queen, king]
 	
-	# for printf debugging purposes mostly
-	suit_map = "♧♢♡♤"
-	rank_map = ".A23456789TJQK"
-	
+	# for printf debugging purposes mostly	
+	map = ".A23456789TJQK"
+			
+
+class Card (object):
+	'''
+	suit is an integer from 0 to 3 (clubs=0, diamonds, hearts, spades=3)
+	rank is an integer from 1 to 13 (ace=1, jack=11, queen=12, king=13)
+	Card objects can be compared using == and can also be used as keys
+	in dicts.
+	'''	
 	def __init__(self, rank, suit):
 		self.rank = rank
 		self.suit = suit
 		
 	def __repr__(self):
-		return Card.rank_map[self.rank] + Card.suit_map[self.suit]
+		return Rank.map[self.rank] + Suit.map[self.suit]
 		
 	def __eq__(self, other):
 		return self.rank == other.rank and self.suit == other.suit
@@ -65,14 +86,17 @@ class Card (object):
 
 class Deck (object):
 	def __init__(self):
-		ranks = Card.all_ranks
-		suits = Card.all_suits
+		'''Init standard 52-card deck of playing cards, sorted.'''
+		ranks = Rank.all_ranks
+		suits = Suit.all_suits
 		self.cards = [Card(r, s) for r, s in product(ranks, suits)]
 			
 	def shuffle(self):
+		'''Shuffle the deck.'''
 		random.shuffle(self.cards)
 		
 	def deal(self, number):
+		'''Remove number cards off the top of the deck and return them in list.'''
 		hand = self.cards[-number:]
 		del self.cards[-number:]
 		return hand
@@ -87,24 +111,26 @@ class Seahaven (object):
 	def new_game(self):
 		deck = Deck()
 		deck.shuffle()
-		self.slots = []
-		self.move_history = [] # list of (source slot index, dest slot index, count, is_auto) tuples
+		
+		# Each tower, cell and suit stack is given a slot index and represented as
+		# a list in the slots property.
+		# 0..9: tower stacks
+		# 10..13: free cells
+		# 14..17: suit stacks
+		self.slots = [[] for _ in range(18)]
+		
+		# Both the move_history and the redo_stack are lists of 4-tuples:
+		# (source slot index, dest slot index, count, is_auto)
+		self.move_history = [] 
 		self.redo_stack = []
 		
-		# slots at indices 0-9 are the towers
-		for _ in range(NUM_TOWERS):
-			self.slots.append(deck.deal(NUM_CARDS_PER_TOWER))
-		
-		# slots at indices 10-13 are the cells
-		for _ in range(NUM_SLOTS):
-			if len(deck.cards) > 0:
-				self.slots.append(deck.deal(1))
-			else:
-				self.slots.append([])
-		
-		# slots at indices 14-17 are the suit slots
-		for _ in range(NUM_CELLS):
-			self.slots.append([])
+		# deal cards into the towers
+		for i in range(NUM_TOWERS):
+			self.slot_for_tower(i).extend(deck.deal(NUM_CARDS_PER_TOWER))
+			
+		# deal one card each into the free cells 0 and 2
+		for i in [0, 2]:
+			self.slot_for_cell(i).extend(deck.deal(1))
 			
 		self.empty_cells_count = 2
 		
@@ -112,22 +138,14 @@ class Seahaven (object):
 		
 	def __repr__(self):
 		s = "Towers:\n"
-		
 		for i in range(10):
-			slot = self.slots[i]
-			s += "{0}: {1!s}\n".format(i, slot)
-			
+			s += "{0}: {1!s}\n".format(i, self.slot_for_tower(i))
 		s += "\nCells:\n"
-		for i in range(10, 14):
-			slot = self.slots[i]
-			s += "{0}: {1!s}\n".format(i, slot)
-			
+		for i in range(4):
+			s += "{0}: {1!s}\n".format(NUM_TOWERS+i, self.slot_for_cell(i))
 		s += "\nSuits:\n"
-		for suit in Card.all_suits:
-			i = self.slot_index_for_suit(suit)
-			slot = self.slots[i]
-			s += "{0}: {1!s}\n".format(Card.suit_map[suit], slot)
-			
+		for suit in Suit.all_suits:
+			s += "{0}: {1!s}\n".format(Suit.map[suit], self.slot_for_suit(suit))
 		return s
 		
 	def slot_for_tower(self, tower_index):
@@ -192,7 +210,7 @@ class Seahaven (object):
 				print("Invalid move: destination is a cell and count > 1")
 				return False
 		else: # destination is not a cell...
-			if first_move_card.rank == Card.king: # ...first card is a King...
+			if first_move_card.rank == Rank.king: # ...first card is a King...
 				# ...dest must be a empty
 				if len(self.slots[dest]) > 0:
 					print("Invalid move: first card being moved is King, but dest is not empty")
@@ -236,11 +254,11 @@ class Seahaven (object):
 		made_move = True
 		while made_move:
 			made_move = False
-			for suit in Card.all_suits:
+			for suit in Suit.all_suits:
 				suit_slot_index = self.slot_index_for_suit(suit)
 				suit_slot = self.slots[suit_slot_index]
 				if len(suit_slot) == 0:
-					target_rank = Card.ace
+					target_rank = Rank.ace
 				else:
 					target_rank = suit_slot[-1].rank + 1
 				source = self.find_slot_with_card(Card(target_rank, suit))
@@ -248,8 +266,7 @@ class Seahaven (object):
 					self.do_raw_move(source, suit_slot_index, 1, True, animate, record)
 					made_move = True
 	
-	def do_raw_move(self, source, dest, count, is_auto, animate=True, record=True, clear_redo=False):
-		
+	def do_raw_move(self, source, dest, count, is_auto, animate=True, record=True, clear_redo=False):	
 		if animate and self.gui:
 			source_cards = self.slots[source][-count:]
 			if self.is_suit_slot(dest):
@@ -290,8 +307,7 @@ class Seahaven (object):
 			if len(slot) > 0:
 				top_card = slot[-1]
 				if top_card == card:
-					return i
-		
+					return i		
 		return -1
 
 	def undo(self):
@@ -319,10 +335,12 @@ class Seahaven (object):
 		
 	def has_redo(self):
 		return len(self.redo_stack) > 0
-		
+
+				
 class TestGUI (object):	
 	def queue_animation(self, source_cards, dest_slot_index, dest_offset):
 		print("%s, %d, %d" % (source_cards.__repr__(), dest_slot_index, dest_offset))
+
 
 if __name__ == '__main__':
 	game = Seahaven()
