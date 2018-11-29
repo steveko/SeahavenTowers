@@ -1,6 +1,7 @@
 import random
 import math
 import console
+import json
 
 from itertools import product
 
@@ -81,7 +82,10 @@ class Card (object):
 		return self.rank == other.rank and self.suit == other.suit
 		
 	def __hash__(self):
-		return hash((self.rank, self.suit))
+		return hash(self.as_tuple())
+		
+	def as_tuple(self):
+		return (self.rank, self.suit)
 
 
 class Deck (object):
@@ -104,13 +108,8 @@ class Deck (object):
 		
 class Seahaven (object):
 		
-	def __init__(self):
+	def __init__(self, save_file=None):
 		self.gui = None
-		self.new_game()
-		
-	def new_game(self):
-		deck = Deck()
-		deck.shuffle()
 		
 		# Each tower, cell and suit stack is given a slot index and represented as
 		# a list in the slots property.
@@ -123,7 +122,53 @@ class Seahaven (object):
 		# (source slot index, dest slot index, count, is_auto)
 		self.move_history = [] 
 		self.redo_stack = []
+		self.empty_cells_count = 0
+		self.save_file = save_file
 		
+		game_loaded = False
+		
+		if save_file:
+			try:
+				with open(save_file) as json_file:
+					self.from_dict(json.load(json_file))
+					game_loaded = True
+			except:
+				pass
+				
+		if not game_loaded:
+			self.new_game()
+		
+	def to_dict(self):
+		dict_repr = {}
+		slots = []
+		for slot in self.slots:
+			slots.append([(c.rank, c.suit) for c in slot])
+		dict_repr["slots"] = slots
+		dict_repr["move_history"] = self.move_history
+		dict_repr["redo_stack"] = self.redo_stack
+		dict_repr["empty_cells_count"] = self.empty_cells_count
+		return dict_repr
+		
+	def from_dict(self, dict_repr):
+		slots = dict_repr["slots"]
+		
+		self.slots = []
+		for slot in slots:
+			self.slots.append([Card(rank, suit) for (rank, suit) in slot])
+		
+		self.move_history = dict_repr["move_history"]
+		self.redo_stack = dict_repr["redo_stack"]
+		self.empty_cells_count = dict_repr["empty_cells_count"]
+		
+	def save(self):
+		if self.save_file:
+			with open(self.save_file, "w") as json_file:
+				json.dump(self.to_dict(), json_file)
+				
+	def new_game(self):
+		deck = Deck()
+		deck.shuffle()
+				
 		# deal cards into the towers
 		for i in range(NUM_TOWERS):
 			self.slot_for_tower(i).extend(deck.deal(NUM_CARDS_PER_TOWER))
@@ -131,10 +176,13 @@ class Seahaven (object):
 		# deal one card each into the free cells 0 and 2
 		for i in [0, 2]:
 			self.slot_for_cell(i).extend(deck.deal(1))
-			
-		self.empty_cells_count = 2
 		
+		self.empty_cells_count = 2
+		self.move_history = [] 
+		self.redo_stack = []
+				
 		self.do_auto_moves(animate=False, record=False)
+		self.save()
 		
 	def __repr__(self):
 		s = "Towers:\n"
@@ -248,6 +296,8 @@ class Seahaven (object):
 		self.do_raw_move(source, dest, count, False, animate=True, record=True, clear_redo=True)
 		self.do_auto_moves()
 		
+		self.save()
+		
 		return True
 		
 	def do_auto_moves(self, animate=True, record=True):
@@ -318,6 +368,7 @@ class Seahaven (object):
 			self.do_raw_move(dest, source, count, is_auto, animate=True, record=False)
 			if not is_auto:
 				break
+		self.save()
 		
 	def redo(self):
 		check_for_auto = False
@@ -329,6 +380,7 @@ class Seahaven (object):
 				break
 			self.do_raw_move(source, dest, count, is_auto, animate=True, record=True, clear_redo=False)
 			check_for_auto = True
+		self.save()
 		
 	def has_undo(self):
 		return len(self.move_history) > 0
@@ -346,6 +398,7 @@ if __name__ == '__main__':
 	game = Seahaven()
 	game.gui = TestGUI()
 	console.clear()
+	print(game.to_dict())
 	while True:
 		print(game)
 		source = int(input("Move from: "))

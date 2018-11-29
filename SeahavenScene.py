@@ -3,10 +3,13 @@ import sound
 import random
 import math
 import ui
+import os
 
 from Seahaven import *
 
 A = Action
+
+SAVE_FILE = "save_file.txt"
 
 class CardNode (SpriteNode):
 	'''
@@ -110,7 +113,9 @@ class TableNode (SpriteNode):
 		table_height = self.card_height*2 + self.v_gap*16
 		
 		super().__init__(color='#046e0d', size=(table_width, table_height))
+		
 		self.setup_placards()
+		self.setup_buttons()
 		
 		self.game = None 						# a Seahaven object
 		self.card_nodes = {}				# Card -> CardNode
@@ -150,9 +155,11 @@ class TableNode (SpriteNode):
 			placard.position = self.card_position_at(column, 1)
 			self.add_child(placard)
 			
+	def setup_buttons(self):
 		# Add undo and redo buttons
 		self.buttons = []
-		buttons = [('iow:ios7_undo_256', 'undo', 2, self.undo), ('iow:ios7_redo_256', 'redo', 7, self.redo)]
+		buttons = [('iow:ios7_undo_256', 'undo', 2, self.undo),
+							 ('iow:ios7_redo_256', 'redo', 7, self.redo)]
 		
 		for button_info in buttons:
 			(image, identifier, column, action) = button_info
@@ -160,6 +167,11 @@ class TableNode (SpriteNode):
 			button.position = self.card_position_at(column, 0)
 			self.buttons.append(button)
 			self.add_child(button)
+			
+		new_game_button = ButtonNode('iow:ios7_flag_256', 'new_game', self.new_game)
+		new_game_button.position = (0, 40-self.size.height/2 )
+		self.buttons.append(new_game_button)
+		self.add_child(new_game_button)
 	
 	def undo(self):
 		self.game.undo()
@@ -168,6 +180,11 @@ class TableNode (SpriteNode):
 	def redo(self):
 		self.game.redo()
 		self.process_next_animation()
+		
+	def new_game(self):
+		if os.path.exists(SAVE_FILE):
+			os.unlink(SAVE_FILE)
+		self.set_game(Seahaven(SAVE_FILE))
 		
 	def card_position_at(self, column, row):
 		'''
@@ -495,7 +512,7 @@ class SeahavenScene (Scene):
 	
 	def setup(self):
 		self.table = TableNode()
-		self.table.set_game(Seahaven())
+		self.table.set_game(Seahaven(SAVE_FILE))
 		self.table.game.gui = self.table
 		
 		self.add_child(self.table)
